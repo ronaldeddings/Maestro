@@ -136,6 +136,87 @@ if (typeof window !== 'undefined') {
 	});
 }
 
+const createMemoryStorage = (): Storage => {
+	const store = new Map<string, string>();
+
+	return {
+		getItem: (key: string) => store.get(key) ?? null,
+		setItem: (key: string, value: string) => {
+			store.set(key, String(value));
+		},
+		removeItem: (key: string) => {
+			store.delete(key);
+		},
+		clear: () => {
+			store.clear();
+		},
+		key: (index: number) => Array.from(store.keys())[index] ?? null,
+		get length() {
+			return store.size;
+		},
+	} as Storage;
+};
+
+const hasCompleteStorage = (storage: unknown): storage is Storage => {
+	const candidate = storage as Partial<Storage> | undefined;
+	return Boolean(
+		candidate &&
+		typeof candidate.getItem === 'function' &&
+		typeof candidate.setItem === 'function' &&
+		typeof candidate.removeItem === 'function' &&
+		typeof candidate.clear === 'function' &&
+		typeof candidate.key === 'function'
+	);
+};
+
+const ensureTestLocalStorage = () => {
+	const globalDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+	if (
+		globalDescriptor &&
+		'value' in globalDescriptor &&
+		hasCompleteStorage(globalDescriptor.value)
+	) {
+		return;
+	}
+
+	const windowDescriptor =
+		typeof window !== 'undefined'
+			? Object.getOwnPropertyDescriptor(window, 'localStorage')
+			: undefined;
+	if (
+		windowDescriptor &&
+		'value' in windowDescriptor &&
+		hasCompleteStorage(windowDescriptor.value)
+	) {
+		Object.defineProperty(globalThis, 'localStorage', {
+			configurable: true,
+			writable: true,
+			value: windowDescriptor.value,
+		});
+		return;
+	}
+
+	const storage = createMemoryStorage();
+	Object.defineProperty(globalThis, 'localStorage', {
+		configurable: true,
+		writable: true,
+		value: storage,
+	});
+	if (typeof window !== 'undefined') {
+		Object.defineProperty(window, 'localStorage', {
+			configurable: true,
+			writable: true,
+			value: storage,
+		});
+	}
+};
+
+if (typeof window !== 'undefined') {
+	// Node 25 exposes an incomplete localStorage object unless launched with a
+	// storage file. Normalize it so jsdom tests get the standard Storage API.
+	ensureTestLocalStorage();
+}
+
 // Mock ResizeObserver using a proper class-like constructor
 // Simulates a 1000px width by default which ensures all responsive UI elements are visible
 class MockResizeObserver {
